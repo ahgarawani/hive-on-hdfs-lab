@@ -22,7 +22,7 @@
     <!-- HDFS Configuration -->
     <property>
         <name>fs.defaultFS</name>
-        <value>hdfs://namenode:9000</value>
+        <value>hdfs://hive-modern-namenode:9000</value>
     </property>
     <property>
         <name>hive.metastore.warehouse.dir</name>

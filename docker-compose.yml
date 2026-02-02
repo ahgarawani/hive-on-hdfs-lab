@@ -2,7 +2,7 @@ services:
   # PostgreSQL for Hive Metastore
   postgres:
     image: postgres:16
-    container_name: hive-postgres
+    container_name: hive-modern-postgres
     environment:
       POSTGRES_USER: hive
       POSTGRES_PASSWORD: hive
@@ -21,7 +21,7 @@ services:
   # Hadoop NameNode
   namenode:
     image: apache/hadoop:3.4.1
-    container_name: namenode
+    container_name: hive-modern-namenode
     hostname: namenode
     command: ["hdfs", "namenode"]
     ports:
@@ -45,7 +45,7 @@ services:
   # Hadoop DataNode
   datanode:
     image: apache/hadoop:3.4.1
-    container_name: datanode
+    container_name: hive-modern-datanode
     hostname: datanode
     command: ["hdfs", "datanode"]
     ports:
@@ -65,7 +65,7 @@ services:
   # Apache Hive Metastore
   metastore:
     image: apache/hive:4.0.1
-    container_name: hive-metastore
+    container_name: hive-modern-metastore
     environment:
       SERVICE_NAME: metastore
       DB_DRIVER: postgres
@@ -94,7 +94,7 @@ services:
   # Apache Hive Server
   hive-server:
     image: apache/hive:4.0.1
-    container_name: hive-server
+    container_name: hive-modern-server
     environment:
       SERVICE_NAME: hiveserver2
       DB_DRIVER: postgres
@@ -120,7 +120,7 @@ services:
   # Hue - Web UI
   hue:
     image: gethue/hue:4.11.0
-    container_name: hue
+    container_name: hive-modern-hue
     ports:
       - "8888:8888"
     volumes:

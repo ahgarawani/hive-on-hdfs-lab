@@ -37,10 +37,21 @@ for ((month=1; month<=MONTHS; month++)); do
     fi
 done
 
+# Download taxi zones lookup
+ZONES_FILE="${DATASET_DIR}/taxi_zone_lookup.csv"
+if [ -f "$ZONES_FILE" ]; then
+    echo "✓ taxi_zone_lookup.csv already exists, skipping..."
+else
+    echo "⬇ Downloading taxi_zone_lookup.csv..."
+    curl -L -o "$ZONES_FILE" "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
+    echo "✓ Downloaded taxi_zone_lookup.csv"
+fi
+
 echo ""
 echo "========================================"
 echo "Download complete!"
 echo "Files saved to: $DATASET_DIR"
 echo ""
 ls -lh "$DATASET_DIR"/*.parquet 2>/dev/null || echo "No parquet files found"
+ls -lh "$DATASET_DIR"/*.csv 2>/dev/null || echo "No csv files found"
 echo "========================================"

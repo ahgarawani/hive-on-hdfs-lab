@@ -39,11 +39,12 @@ else
     exit 1
 fi
 
-# Download taxi zones lookup if not exists
+# Check taxi zones file exists
 ZONES_FILE="/datasets/taxi_zone_lookup.csv"
 if [ ! -f "$ZONES_FILE" ]; then
-    echo "Downloading taxi zones lookup..."
-    curl -L -o "$ZONES_FILE" "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
+    echo "⚠ taxi_zone_lookup.csv not found in /datasets"
+    echo "  Run scripts/download_nyc_taxi.sh first"
+    exit 1
 fi
 
 # Upload taxi zones to HDFS

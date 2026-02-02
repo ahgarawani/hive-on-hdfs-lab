@@ -1,0 +1,21 @@
+# Data files
+datasets/*.parquet
+datasets/*.csv
+
+# Docker volumes
+*_data/
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

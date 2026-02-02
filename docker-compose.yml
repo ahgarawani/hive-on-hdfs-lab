@@ -23,17 +23,17 @@ services:
     image: apache/hadoop:3.4.1
     container_name: hive-modern-namenode
     hostname: namenode
-    command: ["hdfs", "namenode"]
+    user: root
+    command: ["bash", "-c", "mkdir -p /opt/hadoop/dfs/name && if [ ! -d /opt/hadoop/dfs/name/current ]; then hdfs namenode -format -force; fi && hdfs namenode"]
     ports:
       - "9870:9870"   # NameNode Web UI
       - "9000:9000"   # HDFS RPC
     environment:
       HADOOP_HOME: /opt/hadoop
-      ENSURE_NAMENODE_DIR: /tmp/hadoop-root/dfs/name
     env_file:
       - ./config/hadoop.env
     volumes:
-      - namenode_data:/tmp/hadoop-root/dfs/name
+      - namenode_data:/opt/hadoop/dfs/name
     networks:
       - hive-network
     healthcheck:
@@ -47,6 +47,7 @@ services:
     image: apache/hadoop:3.4.1
     container_name: hive-modern-datanode
     hostname: datanode
+    user: root
     command: ["hdfs", "datanode"]
     ports:
       - "9864:9864"   # DataNode Web UI
@@ -55,7 +56,7 @@ services:
     env_file:
       - ./config/hadoop.env
     volumes:
-      - datanode_data:/tmp/hadoop-root/dfs/data
+      - datanode_data:/opt/hadoop/dfs/data
     depends_on:
       namenode:
         condition: service_healthy
@@ -66,6 +67,7 @@ services:
   metastore:
     image: apache/hive:4.0.1
     container_name: hive-modern-metastore
+    user: root
     environment:
       SERVICE_NAME: metastore
       DB_DRIVER: postgres
@@ -78,6 +80,7 @@ services:
       - "9083:9083"
     volumes:
       - ./config/hive-site.xml:/opt/hive/conf/hive-site.xml
+      - ./drivers:/opt/hive/lib/jdbc
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,11 +93,13 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+    entrypoint: ["/bin/bash", "-c", "cp /opt/hive/lib/jdbc/*.jar /opt/hive/lib/ 2>/dev/null || true && /entrypoint.sh"]
 
   # Apache Hive Server
   hive-server:
     image: apache/hive:4.0.1
     container_name: hive-modern-server
+    user: root
     environment:
       SERVICE_NAME: hiveserver2
       DB_DRIVER: postgres
@@ -111,11 +116,13 @@ services:
       - ./config/hive-site.xml:/opt/hive/conf/hive-site.xml
       - ./datasets:/datasets
       - ./scripts:/scripts
+      - ./drivers:/opt/hive/lib/jdbc
     depends_on:
       metastore:
         condition: service_healthy
     networks:
       - hive-network
+    entrypoint: ["/bin/bash", "-c", "cp /opt/hive/lib/jdbc/*.jar /opt/hive/lib/ 2>/dev/null || true && /entrypoint.sh"]
 
   # Hue - Web UI
   hue:

@@ -37,7 +37,7 @@ CREATE EXTERNAL TABLE yellow_trips (
     Airport_fee             DOUBLE      COMMENT 'Airport fee ($)'
 )
 STORED AS PARQUET
-LOCATION '/opt/hive/data/warehouse/nyc_taxi.db/yellow_trips';
+LOCATION 'hdfs://namenode:9000/user/hive/warehouse/nyc_taxi.db/yellow_trips';
 
 -- =====================================================
 -- TAXI ZONES LOOKUP TABLE

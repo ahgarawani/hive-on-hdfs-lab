@@ -36,7 +36,18 @@ Before beginning, ensure the following are installed:
 - **curl** or **wget**: To download drivers and datasets.
 - **8GB+ RAM**: The containers require significant memory.
 
-### 2. Initialization
+### 2. Download the Repository
+
+Clone this repository to your local machine:
+
+```bash
+git clone https://github.com/your-username/hive-on-hdfs-lab.git
+cd hive-on-hdfs-lab
+```
+
+OR download the ZIP and extract it.
+
+### 3. Initialization
 
 **Step A: Download Database Driver**
 Binary drivers are not shipped in the repository. Run this script to download the PostgreSQL JDBC driver required for Hive to talk to the Metastore.
@@ -54,7 +65,7 @@ docker compose up -d
 
 > ⏳ **Wait 1-2 minutes** for all services to become healthy. Check the status with `docker ps`.
 
-### 3. Data Strategy (Extract & Load)
+### 4. Data Strategy (Extract & Load)
 
 This lab is pre-configured to use the **MovieLens Latest Small** dataset. This dataset was chosen to demonstrate complex SQL operations like joins, window functions, and array handling.
 

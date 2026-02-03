@@ -49,14 +49,20 @@ OR download the ZIP and extract it.
 
 ### 3. Initialization
 
-**Step A: Download Database Driver**
+**Step A: Change Permissions of Scripts**
+
+```bash
+chmod +x ./scripts/*
+```
+
+**Step B: Download Database Driver**
 Binary drivers are not shipped in the repository. Run this script to download the PostgreSQL JDBC driver required for Hive to talk to the Metastore.
 
 ```bash
 ./scripts/download_driver.sh
 ```
 
-**Step B: Start the Cluster**
+**Step C: Start the Cluster**
 Launch the environment. This starts NameNode, DataNodes, Metastore, HiveServer2, and Hue.
 
 ```bash

@@ -1,124 +1,207 @@
-# Hive Modern Lab
+# Hive On HDFS Lab
 
 A robust, Docker-based Apache Hive 4.0 learning environment featuring the **MovieLens** dataset. Designed for data engineering experimentation, SQL analytics learning, and exploring the Hadoop/Hive ecosystem without complex cluster setup.
 
 ## 🏗️ Architecture Stack
 
-| Component         | Version | Role                          | URL (if applicable)                |
-| :---------------- | :------ | :---------------------------- | :--------------------------------- |
-| **Apache Hive**   | 4.0.1   | Data Warehousing & SQL Engine | `http://localhost:10002` (Web UI)  |
-| **Apache Hadoop** | 3.4.1   | Distributed Storage (HDFS)    | `http://localhost:9870` (NameNode) |
-| **Hue**           | 4.11.0  | SQL Workbench & HDFS Browser  | `http://localhost:8888`            |
-| **PostgreSQL**    | 16      | Metastore Backend             | -                                  |
+The lab simulates a real-world big data cluster. Each component runs in its own Docker container, mimicking a distributed environment.
+
+| Component              | Container Name | Version | Role             | Description                                                                                                | URL                      |
+| :--------------------- | :------------- | :------ | :--------------- | :--------------------------------------------------------------------------------------------------------- | :----------------------- |
+| **Apache Hive Server** | `hiveserver2`  | 4.0.1   | SQL Engine       | The "Brain". Accepts SQL queries, compiles them into execution plans, and runs them over the data in HDFS. | `http://localhost:10002` |
+| **Hive Metastore**     | `metastore`    | 4.0.1   | Metadata Service | The "Catalog". Stores schema definitions (table names, columns, locations) but not the actual data.        | -                        |
+| **PostgreSQL**         | `postgres`     | 16      | Metastore DB     | The "Library Card Catalog". The backing database where the Metastore service saves its information.        | -                        |
+| **Hadoop NameNode**    | `namenode`     | 3.4.1   | HDFS Master      | The "Directory". Knows where every file block is stored across the cluster.                                | `http://localhost:9870`  |
+| **Hadoop DataNode**    | `datanode`     | 3.4.1   | HDFS Worker      | The "Hard Drive". Stores the actual blocks of data (files).                                                | -                        |
+| **Hue**                | `hue`          | 4.11.0  | Web Interface    | The "Frontend". A visual UI for writing SQL queries and browsing HDFS files.                               | `http://localhost:8888`  |
+
+### How they work together:
+
+1.  **Storage:** Data (CSVs, ORC files) lives in `datanode`, managed by `namenode`.
+2.  **Metadata:** When a table is created, `hiveserver2` tells `metastore` to record the schema in `postgres`.
+3.  **Compute:** When a query runs, `hiveserver2` looks up the file location from `metastore`, reads data from `namenode`/`datanode`, processes it, and returns results.
+4.  **Interface:** Users interact with the system via `hue` (web) or the command line, which talks to `hiveserver2`.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start Guide
 
 ### 1. Prerequisites
 
-- Docker & Docker Compose
-- 8GB+ RAM available (Containers allocate ~4-6GB)
+Before beginning, ensure the following are installed:
 
-### 2. Start the Cluster
+- **Docker Desktop**: [Installation Guide](https://docs.docker.com/get-docker/)
+- **Docker Compose**: [Installation Guide](https://docs.docker.com/compose/install/)
+- **Bash Shell**: Git Bash (Windows), Terminal (Mac/Linux).
+- **curl** or **wget**: To download drivers and datasets.
+- **8GB+ RAM**: The containers require significant memory.
 
+### 2. Initialization
+
+**Step A: Download Database Driver**
+Binary drivers are not shipped in the repository. Run this script to download the PostgreSQL JDBC driver required for Hive to talk to the Metastore.
+
+```bash
+./scripts/download_driver.sh
+```
+
+**Step B: Start the Cluster**
 Launch the environment. This starts NameNode, DataNodes, Metastore, HiveServer2, and Hue.
 
 ```bash
 docker compose up -d
 ```
 
-> ⏳ **Wait 1-2 minutes** for all services to become healthy. Run `docker ps` to verify.
+> ⏳ **Wait 1-2 minutes** for all services to become healthy. Check the status with `docker ps`.
 
-### 3. Load Data & Create Schema
+### 3. Data Strategy (Extract & Load)
 
-The project includes automated scripts to download the MovieLens dataset, ingest it into HDFS, and create optimized Hive tables.
+This lab is pre-configured to use the **MovieLens Latest Small** dataset. This dataset was chosen to demonstrate complex SQL operations like joins, window functions, and array handling.
 
-**Step A: Ingest Data (Run from Host)**
-Downloads the dataset and uploads it to HDFS (`/user/hive/warehouse/movielens.db/...`).
+**Step C: Download Dataset**
+Download the MovieLens zip file and extract it to a local `datasets/` folder.
 
 ```bash
-./scripts/load_data.sh
+./scripts/download_dataset.sh
 ```
 
-**Step B: Build Data Warehouse**
-Creates the Hive database, staging tables (CSV), and optimized analytical tables (ORC + Snappy).
+**Step D: Load Data into HDFS (Automated)**
+This step mimics an "Ingestion" pipeline. It uploads the local CSV files into the Hadoop Distributed File System (HDFS) inside the cluster.
 
 ```bash
-docker exec hiveserver2 hive -f /scripts/create_tables.hql
+./scripts/load_data_to_hdfs.sh
+```
+
+#### Manual Data Loading (Optional)
+
+If prefering to load data manually without the script:
+
+1.  Ensure the dataset is downloaded to `datasets/ml-latest-small`.
+2.  The `hiveserver2` container mounts this folder at `/dataset`.
+3.  Log in to the container and upload files using the HDFS CLI:
+
+```bash
+# 1. Enter the Hive container
+docker exec -it hiveserver2 bash
+
+# 2. Create directory in HDFS
+hdfs dfs -mkdir -p /user/hive/warehouse/movielens.db/movies_raw
+
+# 3. Upload file from local mount to HDFS
+hdfs dfs -put /datasets/ml-latest-small/movies.csv /user/hive/warehouse/movielens.db/movies_raw/
 ```
 
 ---
 
-## 📊 Dataset: MovieLens (Latest Small)
+## 💻 Interacting with HDFS
 
-We use the industry-standard [MovieLens Dataset](https://grouplens.org/datasets/movielens/) for realistic analytics scenarios.
+There are three ways to explore the filesystem:
 
-### Schema Overview
+1.  **Terminal (CLI):** Run HDFS commands directly inside the container.
 
-| Table Layer   | Table Name          | Format  | Description                                       |
-| :------------ | :------------------ | :------ | :------------------------------------------------ |
-| **Staging**   | `movies_raw`        | CSV     | Raw movie metadata (ID, Title, Genres)            |
-| **Staging**   | `ratings_raw`       | CSV     | Raw user ratings (User, Movie, Rating, Timestamp) |
-| **Warehouse** | `movies`            | **ORC** | Optimized storage with Snappy compression         |
-| **Warehouse** | `ratings`           | **ORC** | Bucketed by `user_id`, sorted by time             |
-| **Analytics** | `ratings_analytics` | **ORC** | Converted timestamps and partitioned structure    |
+    ```bash
+    docker exec hiveserver2 hdfs dfs -ls /user/hive/warehouse
+    ```
+
+2.  **Hadoop Web UI:** View the NameNode status and browse files via the browser.
+    - URL: [http://localhost:9870](http://localhost:9870)
+    - Navigate to **Utilities** -> **Browse the file system**.
+
+3.  **Hue File Browser:** A user-friendly file manager.
+    - URL: [http://localhost:8888](http://localhost:8888)
+    - Click the **Files** icon on the left sidebar.
 
 ---
 
-## 🧑‍💻 Learning & Exploration
+## 📊 Analytics & Usage
 
-### Running Queries
+### 4. Build the Data Warehouse
 
-You can run HiveQL queries via the command line or the Hue Web UI.
+Now that the raw CSVs are in HDFS, use Hive to build a proper Data Warehouse structure.
 
-**Option 1: Command Line**
+**Option A: Automated Script**
+Run the prepared Hive scripts (`.hql`) to create tables and perform ETL.
 
 ```bash
-# Run the included sample queries suite
-docker exec hiveserver2 hive -f /scripts/sample_queries.hql
-
-# Opens interactive Hive shell
-docker exec -it hiveserver2 hive
+docker exec hiveserver2 hive -f /scripts/01_setup_staging.hql
+docker exec hiveserver2 hive -f /scripts/02_etl_warehouse.hql
 ```
 
-**Option 2: Hue Web UI (Recommended)**
+**Option B: Manual Execution (Beeline)**
+Connect to the Hive server interactively using Beeline (the JDBC CLI tool) and run queries manually.
 
-1. Go to [http://localhost:8888](http://localhost:8888).
-2. Create any username/password (first login is admin).
-3. Open the **Editor -> Hive**.
-4. Run: `SELECT * FROM movielens.movies LIMIT 10;`
+```bash
+# Connect to HiveServer2
+docker exec -it hiveserver2 beeline -u jdbc:hive2://localhost:10000 -n hive
 
-### Advanced Concepts Demonstrated
+# Inside the Beeline shell:
+> CREATE DATABASE IF NOT EXISTS movielens;
+> USE movielens;
+> SHOW TABLES;
+```
 
-The scripts provided in this repo (`scripts/`) demonstrate real-world patterns:
+**Option C: Manual Execution (Hue)**
 
-- **ETL Pipeline**: `load_data.sh` handles the extract (download) and load (HDFS put). `create_tables.hql` handles the transformation (INSERT OVERWRITE).
-- **Storage Optimization**: Use of **ORC** format and **Snappy** compression for performance.
-- **Complex Types**: Handling array-like strings (`Action|Adventure`) using `LATERAL VIEW EXPLODE`.
-- **Window Functions**: Using `DENSE_RANK()` for top-N analysis.
-- **Bucketing**: Optimizing joins by clustering data.
+1.  Go to [http://localhost:8888](http://localhost:8888).
+2.  Open the **Editor** -> **Hive**.
+3.  Paste SQL commands from `scripts/01_setup_staging.hql` into the editor and click **Run**.
+
+### 5. Run Analysis
+
+Prepare to run analytical queries sample business questions (e.g., "Top rated movies", "Most active users").
+
+**via Command Line:**
+
+```bash
+docker exec hiveserver2 hive -f /scripts/03_analytics.hql
+```
+
+**via Hue (Recommended):**
+
+1.  Go to **Hue**.
+2.  Try a query:
+    ```sql
+    SELECT * FROM movielens.ratings_analytics LIMIT 10;
+    ```
 
 ---
+
+## 🧹 Reset & Cleanup
+
+### Understanding Volumes
+
+All data (HDFS storage, Metastore database) is persisted in Docker Volumes (`namenode_data`, `datanode_data`, `postgres_data`). This means if stopping the containers, the data is saved.
+
+### Stop the Cluster (Keep Data)
+
+To stop the containers but preserve the database and HDFS files:
+
+```bash
+docker compose down
+```
+
+### Full Reset (Wipe Data)
+
+To completely wipe the cluster and start fresh (deleting all data and tables), run:
+
+```bash
+docker compose down -v
+```
+
+_The `-v` flag deletes the volumes._
 
 ## 📂 Project Structure
 
 ```
-├── config/              # Configuration files
-│   ├── hive-site.xml    # Hive connection settings
-│   ├── core-site.xml    # Hadoop core settings
-│   ├── hdfs-site.xml    # HDFS replication & webhdfs
-│   └── hue.ini          # Hue interface config
-├── scripts/             # ETL & SQL Scripts
-│   ├── load_data.sh     # Automation script for data ingestion
-│   ├── create_tables.hql# DDL for Staging & Warehouse layers
-│   └── sample_queries.hql # Analytical queries for learning
-├── datasets/            # Local cache for downloaded data
+├── config/              # Configuration files (Hive, Hadoop, Hue)
+├── scripts/             # Automation Scripts
+│   ├── download_driver.sh      # Setup: Gets Postgres JDBC driver
+│   ├── download_dataset.sh     # ETL: Downloads MovieLens data
+│   ├── load_data_to_hdfs.sh    # ETL: Uploads data to HDFS
+│   ├── 01_setup_staging.hql    # SQL: DDL for CSV tables
+│   ├── 02_etl_warehouse.hql    # SQL: DDL/DML for ORC tables
+│   └── 03_analytics.hql        # SQL: Sample analysis
+├── datasets/            # Local cache for downloaded data (Ignored by Git)
+├── drivers/             # JDBC drivers (Ignored by Git)
 └── docker-compose.yml   # Cluster definition
 ```
-
-## 🛠 Troubleshooting
-
-- **Hue File Browser Error?** Ensure `webhdfs` is enabled. We have mapped `hdfs-site.xml` to Hue to support this.
-- **HDFS Access Issues?** The containers are configured to communicate on `hive-network`. If `hdfs dfs -ls /` fails inside `hiveserver2`, check if `core-site.xml` is mounted correctly (Fixed in latest version).
-- **Performance?** Increase Docker memory limit if queries hang. HiveServer2 is set to use 2GB Heap (`-Xmx2G`).

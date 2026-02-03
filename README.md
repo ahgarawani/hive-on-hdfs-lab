@@ -1,170 +1,124 @@
 # Hive Modern Lab
 
-A Docker-based Apache Hive 4.0 learning environment with the NYC Yellow Taxi dataset (~3M+ trips per month).
+A robust, Docker-based Apache Hive 4.0 learning environment featuring the **MovieLens** dataset. Designed for data engineering experimentation, SQL analytics learning, and exploring the Hadoop/Hive ecosystem without complex cluster setup.
 
-## Stack Versions
+## 🏗️ Architecture Stack
 
-| Component   | Version | Image               |
-| ----------- | ------- | ------------------- |
-| Apache Hive | 4.0.1   | `apache/hive:4.0.1` |
-| PostgreSQL  | 16      | `postgres:16`       |
-| Hue         | 4.11.0  | `gethue/hue:4.11.0` |
+| Component         | Version | Role                          | URL (if applicable)                |
+| :---------------- | :------ | :---------------------------- | :--------------------------------- |
+| **Apache Hive**   | 4.0.1   | Data Warehousing & SQL Engine | `http://localhost:10002` (Web UI)  |
+| **Apache Hadoop** | 3.4.1   | Distributed Storage (HDFS)    | `http://localhost:9870` (NameNode) |
+| **Hue**           | 4.11.0  | SQL Workbench & HDFS Browser  | `http://localhost:8888`            |
+| **PostgreSQL**    | 16      | Metastore Backend             | -                                  |
 
-## Quick Start
+---
 
-### 1. Download the Dataset
+## 🚀 Quick Start
 
-```bash
-# Download 1 month of NYC taxi data (~40-100MB per month, ~3M rows)
-./scripts/download_nyc_taxi.sh 2023 1
+### 1. Prerequisites
 
-# Or download 3 months for more data
-./scripts/download_nyc_taxi.sh 2023 3
-```
+- Docker & Docker Compose
+- 8GB+ RAM available (Containers allocate ~4-6GB)
 
-### 2. Start the Environment
+### 2. Start the Cluster
+
+Launch the environment. This starts NameNode, DataNodes, Metastore, HiveServer2, and Hue.
 
 ```bash
 docker compose up -d
 ```
 
-Wait 1-2 minutes for all services to initialize.
+> ⏳ **Wait 1-2 minutes** for all services to become healthy. Run `docker ps` to verify.
 
-### 3. Load Data into Hive
+### 3. Load Data & Create Schema
 
-```bash
-docker exec -it hive-server bash
-chmod +x /scripts/load_data.sh
-/scripts/load_data.sh
-```
+The project includes automated scripts to download the MovieLens dataset, ingest it into HDFS, and create optimized Hive tables.
 
-### 4. Access the Services
-
-| Service                | URL                    |
-| ---------------------- | ---------------------- |
-| **Hue (SQL Editor)**   | http://localhost:8888  |
-| **HiveServer2 Web UI** | http://localhost:10002 |
-
-Create an account on first Hue login, then start querying!
-
-## Dataset: NYC Yellow Taxi Trips
-
-The [NYC TLC Trip Record Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page) contains millions of taxi trips with:
-
-- Pickup/dropoff timestamps and locations
-- Trip distance and duration
-- Fare breakdown (base fare, tips, tolls, surcharges)
-- Payment type
-- Passenger count
-
-Each monthly file contains **~3 million trips** in Parquet format.
-
-### Tables
-
-| Table          | Description                 | Rows      |
-| -------------- | --------------------------- | --------- |
-| `yellow_trips` | Trip records                | ~3M/month |
-| `taxi_zones`   | Location lookup (263 zones) | 265       |
-
-## Sample Queries
-
-See [scripts/sample_queries.hql](scripts/sample_queries.hql) for 15+ example queries covering:
-
-- Basic aggregations
-- Time-based analysis (hourly, daily, day-of-week)
-- Location joins with taxi zones
-- Tip analysis
-- Window functions
-- Trip duration analysis
-
-### Quick Examples
-
-```sql
--- Total trips
-SELECT COUNT(*) FROM nyc_taxi.yellow_trips;
-
--- Average fare by payment type
-SELECT
-    CASE payment_type WHEN 1 THEN 'Credit' WHEN 2 THEN 'Cash' ELSE 'Other' END as payment,
-    COUNT(*) as trips,
-    ROUND(AVG(total_amount), 2) as avg_fare
-FROM nyc_taxi.yellow_trips
-GROUP BY payment_type;
-
--- Top pickup locations
-SELECT z.Zone, COUNT(*) as pickups
-FROM nyc_taxi.yellow_trips t
-JOIN nyc_taxi.taxi_zones z ON t.PULocationID = z.LocationID
-GROUP BY z.Zone
-ORDER BY pickups DESC
-LIMIT 10;
-```
-
-## Using Beeline CLI
+**Step A: Ingest Data (Run from Host)**
+Downloads the dataset and uploads it to HDFS (`/user/hive/warehouse/movielens.db/...`).
 
 ```bash
-docker exec -it hive-server beeline -u "jdbc:hive2://localhost:10000/"
+./scripts/load_data.sh
 ```
 
-## Useful Commands
+**Step B: Build Data Warehouse**
+Creates the Hive database, staging tables (CSV), and optimized analytical tables (ORC + Snappy).
 
 ```bash
-# Check service status
-docker compose ps
-
-# View Hive logs
-docker compose logs -f hive-server
-
-# Restart services
-docker compose restart
-
-# Stop and remove volumes
-docker compose down -v
+docker exec hiveserver2 hive -f /scripts/create_tables.hql
 ```
 
-## Troubleshooting
+---
 
-### Hue connection issues
+## 📊 Dataset: MovieLens (Latest Small)
 
-- Ensure hive-server is running: `docker compose ps`
-- Check logs: `docker compose logs hue`
-- The first connection may take 30-60 seconds
+We use the industry-standard [MovieLens Dataset](https://grouplens.org/datasets/movielens/) for realistic analytics scenarios.
 
-### Metastore errors
+### Schema Overview
 
-Wait for the metastore health check to pass:
+| Table Layer   | Table Name          | Format  | Description                                       |
+| :------------ | :------------------ | :------ | :------------------------------------------------ |
+| **Staging**   | `movies_raw`        | CSV     | Raw movie metadata (ID, Title, Genres)            |
+| **Staging**   | `ratings_raw`       | CSV     | Raw user ratings (User, Movie, Rating, Timestamp) |
+| **Warehouse** | `movies`            | **ORC** | Optimized storage with Snappy compression         |
+| **Warehouse** | `ratings`           | **ORC** | Bucketed by `user_id`, sorted by time             |
+| **Analytics** | `ratings_analytics` | **ORC** | Converted timestamps and partitioned structure    |
+
+---
+
+## 🧑‍💻 Learning & Exploration
+
+### Running Queries
+
+You can run HiveQL queries via the command line or the Hue Web UI.
+
+**Option 1: Command Line**
 
 ```bash
-docker compose ps metastore
+# Run the included sample queries suite
+docker exec hiveserver2 hive -f /scripts/sample_queries.hql
+
+# Opens interactive Hive shell
+docker exec -it hiveserver2 hive
 ```
 
-### No data in tables
+**Option 2: Hue Web UI (Recommended)**
 
-Run the data loading script:
+1. Go to [http://localhost:8888](http://localhost:8888).
+2. Create any username/password (first login is admin).
+3. Open the **Editor -> Hive**.
+4. Run: `SELECT * FROM movielens.movies LIMIT 10;`
 
-```bash
-docker exec -it hive-server /scripts/load_data.sh
+### Advanced Concepts Demonstrated
+
+The scripts provided in this repo (`scripts/`) demonstrate real-world patterns:
+
+- **ETL Pipeline**: `load_data.sh` handles the extract (download) and load (HDFS put). `create_tables.hql` handles the transformation (INSERT OVERWRITE).
+- **Storage Optimization**: Use of **ORC** format and **Snappy** compression for performance.
+- **Complex Types**: Handling array-like strings (`Action|Adventure`) using `LATERAL VIEW EXPLODE`.
+- **Window Functions**: Using `DENSE_RANK()` for top-N analysis.
+- **Bucketing**: Optimizing joins by clustering data.
+
+---
+
+## 📂 Project Structure
+
+```
+├── config/              # Configuration files
+│   ├── hive-site.xml    # Hive connection settings
+│   ├── core-site.xml    # Hadoop core settings
+│   ├── hdfs-site.xml    # HDFS replication & webhdfs
+│   └── hue.ini          # Hue interface config
+├── scripts/             # ETL & SQL Scripts
+│   ├── load_data.sh     # Automation script for data ingestion
+│   ├── create_tables.hql# DDL for Staging & Warehouse layers
+│   └── sample_queries.hql # Analytical queries for learning
+├── datasets/            # Local cache for downloaded data
+└── docker-compose.yml   # Cluster definition
 ```
 
-## Project Structure
+## 🛠 Troubleshooting
 
-```
-hive-modern-lab/
-├── docker-compose.yml          # Docker services
-├── config/
-│   ├── hue.ini                 # Hue configuration
-│   └── init-hue-db.sql         # PostgreSQL init script
-├── datasets/                   # Downloaded parquet files
-├── scripts/
-│   ├── download_nyc_taxi.sh    # Dataset downloader
-│   ├── load_data.sh            # Data loader
-│   ├── create_tables.hql       # Table definitions
-│   └── sample_queries.hql      # Practice queries
-└── README.md
-```
-
-## Resources
-
-- [Apache Hive 4.0 Documentation](https://hive.apache.org/)
-- [NYC TLC Trip Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page)
-- [Hive Language Manual](https://cwiki.apache.org/confluence/display/Hive/LanguageManual)
+- **Hue File Browser Error?** Ensure `webhdfs` is enabled. We have mapped `hdfs-site.xml` to Hue to support this.
+- **HDFS Access Issues?** The containers are configured to communicate on `hive-network`. If `hdfs dfs -ls /` fails inside `hiveserver2`, check if `core-site.xml` is mounted correctly (Fixed in latest version).
+- **Performance?** Increase Docker memory limit if queries hang. HiveServer2 is set to use 2GB Heap (`-Xmx2G`).

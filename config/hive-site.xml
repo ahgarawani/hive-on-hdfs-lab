@@ -22,7 +22,7 @@
     <!-- HDFS Configuration -->
     <property>
         <name>fs.defaultFS</name>
-        <value>hdfs://hive-modern-namenode:9000</value>
+        <value>hdfs://namenode:9000</value>
     </property>
     <property>
         <name>hive.metastore.warehouse.dir</name>
@@ -30,10 +30,12 @@
     </property>
 
     <!-- Metastore Configuration -->
+    <!--
     <property>
         <name>hive.metastore.uris</name>
-        <value>thrift://hive-metastore:9083</value>
+        <value>thrift://metastore:9083</value>
     </property>
+    -->
 
     <!-- HiveServer2 Configuration -->
     <property>

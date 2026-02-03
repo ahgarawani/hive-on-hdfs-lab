@@ -1,206 +1,69 @@
 -- =====================================================
--- NYC Yellow Taxi - Sample Queries for Learning
+-- MovieLens Analytics - Sample Queries
 -- =====================================================
-
-USE nyc_taxi;
-
+-- Guided Learning: Aggregations, Joins, Window Functions, arrays
 -- =====================================================
--- BASIC QUERIES
--- =====================================================
+USE movielens;
 
--- 1. Count total trips
-SELECT COUNT(*) as total_trips FROM yellow_trips;
+-- Query 1: Basic Stats - How many movies and ratings?
+-- Concept: COUNT(*)
+SELECT COUNT(*) as total_movies FROM movies;
+SELECT COUNT(*) as total_ratings FROM ratings_analytics;
 
--- 2. Sample 10 rows
-SELECT * FROM yellow_trips LIMIT 10;
-
--- 3. Basic trip stats
+-- Query 2: Top 10 Highest Rated Movies (with at least 50 ratings)
+-- Concept: JOIN, GROUP BY, HAVING, ORDER BY
 SELECT 
-    COUNT(*) as trips,
-    ROUND(AVG(trip_distance), 2) as avg_distance_miles,
-    ROUND(AVG(total_amount), 2) as avg_total,
-    ROUND(AVG(tip_amount), 2) as avg_tip
-FROM yellow_trips;
+    m.title,
+    ROUND(AVG(r.rating), 2) as avg_rating,
+    COUNT(r.user_id) as num_ratings
+FROM movies m
+JOIN ratings_analytics r ON m.movie_id = r.movie_id
+GROUP BY m.title
+HAVING num_ratings >= 50
+ORDER BY avg_rating DESC
+LIMIT 10;
 
--- =====================================================
--- FILTERING & AGGREGATION
--- =====================================================
-
--- 4. Trips by payment type
+-- Query 3: Most Popular Genres
+-- Concept: LATERAL VIEW EXPLODE (Handling delimited strings/arrays)
+-- Step: Split "Action|Adventure|Sci-Fi" into separate rows per genre
 SELECT 
-    payment_type,
-    CASE payment_type
-        WHEN 1 THEN 'Credit Card'
-        WHEN 2 THEN 'Cash'
-        WHEN 3 THEN 'No Charge'
-        WHEN 4 THEN 'Dispute'
-        ELSE 'Other'
-    END as payment_method,
-    COUNT(*) as trip_count,
-    ROUND(SUM(total_amount), 2) as total_revenue
-FROM yellow_trips
-GROUP BY payment_type
-ORDER BY trip_count DESC;
+    genre,
+    COUNT(*) as movie_count
+FROM movies 
+LATERAL VIEW EXPLODE(SPLIT(genres, '\\|')) t AS genre
+GROUP BY genre
+ORDER BY movie_count DESC;
 
--- 5. Trips by hour of day
+-- Query 4: Year-over-Year Rating Trends
+-- Concept: Date functions, Histogram
 SELECT 
-    HOUR(tpep_pickup_datetime) as pickup_hour,
-    COUNT(*) as trips,
-    ROUND(AVG(trip_distance), 2) as avg_distance,
-    ROUND(AVG(total_amount), 2) as avg_fare
-FROM yellow_trips
-GROUP BY HOUR(tpep_pickup_datetime)
-ORDER BY pickup_hour;
+    YEAR(rating_time) as rating_year,
+    COUNT(*) as total_ratings,
+    ROUND(AVG(rating), 2) as global_avg
+FROM ratings_analytics
+GROUP BY YEAR(rating_time)
+ORDER BY rating_year;
 
--- 6. Daily trip volume
-SELECT 
-    DATE(tpep_pickup_datetime) as trip_date,
-    COUNT(*) as daily_trips,
-    ROUND(SUM(total_amount), 2) as daily_revenue
-FROM yellow_trips
-GROUP BY DATE(tpep_pickup_datetime)
-ORDER BY trip_date;
-
--- =====================================================
--- JOIN QUERIES (with taxi zones)
--- =====================================================
-
--- 7. Top pickup locations by trip count
-SELECT 
-    z.Borough,
-    z.Zone,
-    COUNT(*) as pickups
-FROM yellow_trips t
-JOIN taxi_zones z ON t.PULocationID = z.LocationID
-GROUP BY z.Borough, z.Zone
-ORDER BY pickups DESC
-LIMIT 20;
-
--- 8. Top routes (pickup -> dropoff)
-SELECT 
-    pz.Zone as pickup_zone,
-    dz.Zone as dropoff_zone,
-    COUNT(*) as trip_count,
-    ROUND(AVG(t.total_amount), 2) as avg_fare
-FROM yellow_trips t
-JOIN taxi_zones pz ON t.PULocationID = pz.LocationID
-JOIN taxi_zones dz ON t.DOLocationID = dz.LocationID
-GROUP BY pz.Zone, dz.Zone
-ORDER BY trip_count DESC
-LIMIT 20;
-
--- 9. Airport trips analysis
-SELECT 
-    z.Zone as airport,
-    COUNT(*) as trips,
-    ROUND(AVG(t.trip_distance), 2) as avg_distance,
-    ROUND(AVG(t.total_amount), 2) as avg_fare,
-    ROUND(AVG(t.tip_amount), 2) as avg_tip
-FROM yellow_trips t
-JOIN taxi_zones z ON t.DOLocationID = z.LocationID
-WHERE z.Zone LIKE '%Airport%' OR z.Zone = 'JFK Airport' OR z.Zone = 'LaGuardia Airport' OR z.Zone = 'Newark Airport'
-GROUP BY z.Zone;
-
--- =====================================================
--- ADVANCED ANALYTICS
--- =====================================================
-
--- 10. Tip percentage analysis
-SELECT 
-    CASE 
-        WHEN tip_amount = 0 THEN 'No Tip'
-        WHEN tip_amount / fare_amount < 0.10 THEN 'Under 10%'
-        WHEN tip_amount / fare_amount < 0.15 THEN '10-15%'
-        WHEN tip_amount / fare_amount < 0.20 THEN '15-20%'
-        WHEN tip_amount / fare_amount < 0.25 THEN '20-25%'
-        ELSE 'Over 25%'
-    END as tip_bracket,
-    COUNT(*) as trips,
-    ROUND(AVG(tip_amount), 2) as avg_tip
-FROM yellow_trips
-WHERE fare_amount > 0 AND payment_type = 1  -- Credit card only (tips recorded)
-GROUP BY 
-    CASE 
-        WHEN tip_amount = 0 THEN 'No Tip'
-        WHEN tip_amount / fare_amount < 0.10 THEN 'Under 10%'
-        WHEN tip_amount / fare_amount < 0.15 THEN '10-15%'
-        WHEN tip_amount / fare_amount < 0.20 THEN '15-20%'
-        WHEN tip_amount / fare_amount < 0.25 THEN '20-25%'
-        ELSE 'Over 25%'
-    END
-ORDER BY trips DESC;
-
--- 11. Window function - Running daily total
-SELECT 
-    trip_date,
-    daily_trips,
-    SUM(daily_trips) OVER (ORDER BY trip_date) as cumulative_trips
-FROM (
+-- Query 5: Window Function - Top 3 Movies per Genre (Complexity High)
+-- Concept: CTE (Common Table Expressions), Window Functions (DENSE_RANK)
+WITH GenreRatings AS (
     SELECT 
-        DATE(tpep_pickup_datetime) as trip_date,
-        COUNT(*) as daily_trips
-    FROM yellow_trips
-    GROUP BY DATE(tpep_pickup_datetime)
-) daily
-ORDER BY trip_date;
-
--- 12. Peak hours by borough
-SELECT 
-    z.Borough,
-    HOUR(t.tpep_pickup_datetime) as hour,
-    COUNT(*) as trips
-FROM yellow_trips t
-JOIN taxi_zones z ON t.PULocationID = z.LocationID
-GROUP BY z.Borough, HOUR(t.tpep_pickup_datetime)
-ORDER BY z.Borough, trips DESC;
-
--- 13. Trip duration analysis
-SELECT 
-    CASE 
-        WHEN (UNIX_TIMESTAMP(tpep_dropoff_datetime) - UNIX_TIMESTAMP(tpep_pickup_datetime)) / 60 < 5 THEN 'Under 5 min'
-        WHEN (UNIX_TIMESTAMP(tpep_dropoff_datetime) - UNIX_TIMESTAMP(tpep_pickup_datetime)) / 60 < 15 THEN '5-15 min'
-        WHEN (UNIX_TIMESTAMP(tpep_dropoff_datetime) - UNIX_TIMESTAMP(tpep_pickup_datetime)) / 60 < 30 THEN '15-30 min'
-        WHEN (UNIX_TIMESTAMP(tpep_dropoff_datetime) - UNIX_TIMESTAMP(tpep_pickup_datetime)) / 60 < 60 THEN '30-60 min'
-        ELSE 'Over 60 min'
-    END as duration_bracket,
-    COUNT(*) as trips,
-    ROUND(AVG(total_amount), 2) as avg_fare,
-    ROUND(AVG(trip_distance), 2) as avg_distance
-FROM yellow_trips
-WHERE tpep_dropoff_datetime > tpep_pickup_datetime
-GROUP BY 
-    CASE 
-        WHEN (UNIX_TIMESTAMP(tpep_dropoff_datetime) - UNIX_TIMESTAMP(tpep_pickup_datetime)) / 60 < 5 THEN 'Under 5 min'
-        WHEN (UNIX_TIMESTAMP(tpep_dropoff_datetime) - UNIX_TIMESTAMP(tpep_pickup_datetime)) / 60 < 15 THEN '5-15 min'
-        WHEN (UNIX_TIMESTAMP(tpep_dropoff_datetime) - UNIX_TIMESTAMP(tpep_pickup_datetime)) / 60 < 30 THEN '15-30 min'
-        WHEN (UNIX_TIMESTAMP(tpep_dropoff_datetime) - UNIX_TIMESTAMP(tpep_pickup_datetime)) / 60 < 60 THEN '30-60 min'
-        ELSE 'Over 60 min'
-    END;
-
--- 14. Vendor comparison
-SELECT 
-    VendorID,
-    COUNT(*) as trips,
-    ROUND(AVG(trip_distance), 2) as avg_distance,
-    ROUND(AVG(total_amount), 2) as avg_fare,
-    ROUND(SUM(total_amount), 2) as total_revenue
-FROM yellow_trips
-GROUP BY VendorID;
-
--- 15. Day of week analysis
-SELECT 
-    DAYOFWEEK(tpep_pickup_datetime) as day_num,
-    CASE DAYOFWEEK(tpep_pickup_datetime)
-        WHEN 1 THEN 'Sunday'
-        WHEN 2 THEN 'Monday'
-        WHEN 3 THEN 'Tuesday'
-        WHEN 4 THEN 'Wednesday'
-        WHEN 5 THEN 'Thursday'
-        WHEN 6 THEN 'Friday'
-        WHEN 7 THEN 'Saturday'
-    END as day_name,
-    COUNT(*) as trips,
-    ROUND(AVG(total_amount), 2) as avg_fare
-FROM yellow_trips
-GROUP BY DAYOFWEEK(tpep_pickup_datetime)
-ORDER BY day_num;
+        genre,
+        m.title,
+        AVG(r.rating) as avg_rating,
+        COUNT(r.user_id) as vote_count
+    FROM movies m
+    LATERAL VIEW EXPLODE(SPLIT(genres, '\\|')) t AS genre
+    JOIN ratings_analytics r ON m.movie_id = r.movie_id
+    GROUP BY genre, m.title
+    HAVING vote_count > 50
+),
+RankedMovies AS (
+    SELECT 
+        genre,
+        title,
+        avg_rating,
+        DENSE_RANK() OVER (PARTITION BY genre ORDER BY avg_rating DESC) as rank
+    FROM GenreRatings
+)
+SELECT * FROM RankedMovies WHERE rank <= 3;

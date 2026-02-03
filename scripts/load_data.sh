@@ -1,75 +1,101 @@
 #!/bin/bash
-
-# Load NYC Taxi data into Hive via HDFS
-# Run this inside the hive-server container
+# =============================================================================
+# Hive Modern Lab - Data Loader Script
+# =============================================================================
+# Dataset: MovieLens Latest Small
+# Description: Downloads and uploads the MovieLens dataset to HDFS.
+#              Designed to be run from the HOST machine (not inside container).
+# Use Case: Demonstrates "ETL" ingestion from Local -> HDFS using Docker wrappers.
+# =============================================================================
 
 set -e
 
-HADOOP_BIN="/opt/hadoop/bin/hdfs"
+# Configuration
+DATASET_URL="https://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
+LOCAL_DATA_DIR="./datasets"
+MOVIELENS_DIR="$LOCAL_DATA_DIR/ml-latest-small"
+HDFS_ROOT_DIR="/user/hive/warehouse/movielens.db"
+CONTAINER_EXEC="docker exec hiveserver2" # Using HiveServer2 as the edge node for HDFS commands
 
-echo "========================================"
-echo "Loading NYC Taxi Data into Hive (HDFS)"
-echo "========================================"
+echo "======================================================="
+echo " 🏗️  Hive Modern Lab: MovieLens Data Loader"
+echo "======================================================="
 
-# Wait for HDFS to be ready
-echo "Waiting for HDFS..."
-for i in {1..30}; do
-    if $HADOOP_BIN dfs -ls / > /dev/null 2>&1; then
-        echo "✓ HDFS is ready"
+# -----------------------------------------------------------------------------
+# 1. Download Dataset (Host Side)
+# -----------------------------------------------------------------------------
+echo "[1/4] Checking local dataset..."
+
+if [ ! -d "$MOVIELENS_DIR" ]; then
+    echo "  ⬇️  Downloading MovieLens dataset from GroupLens..."
+    mkdir -p "$LOCAL_DATA_DIR"
+    
+    # Check if wget is available
+    if command -v wget &> /dev/null; then
+        wget -q --show-progress -O "$LOCAL_DATA_DIR/movielens.zip" "$DATASET_URL"
+    elif command -v curl &> /dev/null; then
+        curl -L -o "$LOCAL_DATA_DIR/movielens.zip" "$DATASET_URL"
+    else
+        echo "  ❌ Error: Neither wget nor curl found. Please install one to download data."
+        exit 1
+    fi
+
+    echo "  📦 Unzipping archive..."
+    unzip -q -o "$LOCAL_DATA_DIR/movielens.zip" -d "$LOCAL_DATA_DIR/"
+    rm "$LOCAL_DATA_DIR/movielens.zip"
+    echo "  ✅ Download complete."
+else
+    echo "  ✅ Dataset already exists at $MOVIELENS_DIR"
+fi
+
+# -----------------------------------------------------------------------------
+# 2. Wait for HDFS
+# -----------------------------------------------------------------------------
+echo "[2/4] Verifying HDFS connectivity..."
+
+MAX_RETRIES=30
+for ((i=1; i<=MAX_RETRIES; i++)); do
+    if $CONTAINER_EXEC hdfs dfs -test -e / > /dev/null 2>&1; then
+        echo "  ✅ HDFS is healthy and accessible."
         break
     fi
-    echo "  Waiting for HDFS... ($i/30)"
-    sleep 2
+    echo "  ⏳ Waiting for HDFS (attempt $i/$MAX_RETRIES)..."
+    sleep 5
+    if [ $i -eq $MAX_RETRIES ]; then
+        echo "  ❌ HDFS timed out. Please check container logs."
+        exit 1
+    fi
 done
 
-# Create HDFS directories
-echo "Creating HDFS directories..."
-$HADOOP_BIN dfs -mkdir -p /user/hive/warehouse/nyc_taxi.db/yellow_trips
-$HADOOP_BIN dfs -mkdir -p /data/taxi_zones
-$HADOOP_BIN dfs -chmod -R 777 /user/hive
+# -----------------------------------------------------------------------------
+# 3. Create HDFS Structure
+# -----------------------------------------------------------------------------
+echo "[3/4] Creating HDFS Directory Structure..."
 
-# Upload parquet files to HDFS
-echo "Uploading parquet files to HDFS..."
-if ls /datasets/*.parquet 1> /dev/null 2>&1; then
-    $HADOOP_BIN dfs -put -f /datasets/*.parquet /user/hive/warehouse/nyc_taxi.db/yellow_trips/
-    echo "✓ Parquet files uploaded to HDFS"
-else
-    echo "⚠ No parquet files found in /datasets"
-    echo "  Run scripts/download_nyc_taxi.sh first"
-    exit 1
-fi
+# Create database directory and table partitions
+$CONTAINER_EXEC hdfs dfs -mkdir -p "$HDFS_ROOT_DIR/movies_raw"
+$CONTAINER_EXEC hdfs dfs -mkdir -p "$HDFS_ROOT_DIR/ratings_raw"
+$CONTAINER_EXEC hdfs dfs -mkdir -p "$HDFS_ROOT_DIR/tags_raw"
+$CONTAINER_EXEC hdfs dfs -mkdir -p "$HDFS_ROOT_DIR/links_raw"
 
-# Check taxi zones file exists
-ZONES_FILE="/datasets/taxi_zone_lookup.csv"
-if [ ! -f "$ZONES_FILE" ]; then
-    echo "⚠ taxi_zone_lookup.csv not found in /datasets"
-    echo "  Run scripts/download_nyc_taxi.sh first"
-    exit 1
-fi
+# Ensure permissions (Simplifying for lab environment)
+$CONTAINER_EXEC hdfs dfs -chmod -R 777 /user/hive
 
-# Upload taxi zones to HDFS
-echo "Uploading taxi zones to HDFS..."
-$HADOOP_BIN dfs -put -f "$ZONES_FILE" /data/taxi_zones/
+# -----------------------------------------------------------------------------
+# 4. Upload Data to HDFS
+# -----------------------------------------------------------------------------
+echo "[4/4] Ingesting Data to HDFS..."
 
-# Run table creation
-echo "Creating Hive tables..."
-beeline -u "jdbc:hive2://localhost:10000/" -f /scripts/create_tables.hql
+# Note: The ./datasets folder on Host is mounted to /datasets in the Container
+# We use the internal path /datasets/ml-latest-small/... for the put command
 
-# Load taxi zones data
-echo "Loading taxi zones data..."
-beeline -u "jdbc:hive2://localhost:10000/" -e "
-USE nyc_taxi;
-LOAD DATA INPATH '/data/taxi_zones/taxi_zone_lookup.csv' OVERWRITE INTO TABLE taxi_zones;
-"
+$CONTAINER_EXEC hdfs dfs -put -f /datasets/ml-latest-small/movies.csv  "$HDFS_ROOT_DIR/movies_raw/"
+$CONTAINER_EXEC hdfs dfs -put -f /datasets/ml-latest-small/ratings.csv "$HDFS_ROOT_DIR/ratings_raw/"
+$CONTAINER_EXEC hdfs dfs -put -f /datasets/ml-latest-small/tags.csv    "$HDFS_ROOT_DIR/tags_raw/"
+$CONTAINER_EXEC hdfs dfs -put -f /datasets/ml-latest-small/links.csv   "$HDFS_ROOT_DIR/links_raw/"
 
-echo ""
-echo "========================================"
-echo "Data loading complete!"
-echo ""
-echo "HDFS contents:"
-$HADOOP_BIN dfs -ls -R /user/hive/warehouse/nyc_taxi.db/
-echo ""
-echo "Sample query to verify:"
-echo "  SELECT COUNT(*) FROM nyc_taxi.yellow_trips;"
-echo "========================================"
-echo "========================================"
+echo "======================================================="
+echo "🎉 Data Load Success!"
+echo "   HDFS Location: $HDFS_ROOT_DIR"
+echo "   Next Step: Run 'docker exec -it hiveserver2 hive -f /scripts/create_tables.hql'"
+echo "======================================================="

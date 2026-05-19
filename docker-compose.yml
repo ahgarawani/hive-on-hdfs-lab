@@ -7,13 +7,16 @@ services:
       POSTGRES_USER: hive
       POSTGRES_PASSWORD: hive
       POSTGRES_DB: metastore
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./config/init-hue-db.sql:/docker-entrypoint-initdb.d/init-hue-db.sql
+      - ./config/init-airflow-db.sql:/docker-entrypoint-initdb.d/init-airflow-db.sql
     networks:
       - hive-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      test: ["CMD-SHELL", "pg_isready -U hive -d metastore && pg_isready -U airflow -d airflow"]
       interval: 10s
       timeout: 5s
       retries: 5

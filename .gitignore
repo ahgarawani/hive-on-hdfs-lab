@@ -1,6 +1,5 @@
 # Data files
-datasets/*.parquet
-datasets/*.csv
+datasets/
 
 # Docker volumes
 *_data/
